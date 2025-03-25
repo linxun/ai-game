@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>六行棋游戏</title> <!-- 网页标题 -->
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            position: relative;
+        }
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(6, 80px); /* 设置棋盘为6列，每列80px */
+            grid-template-rows: repeat(6, 80px); /* 设置棋盘为6行，每行80px */
+            gap: 5px; /* 每个单元格之间的间隙为5px */
+        }
+        .cell {
+            width: 80px;
+            height: 80px;
+            border: 1px solid black; /* 单元格边框 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .piece {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%; /* 棋子为圆形 */
+        }
+        .black-piece {
+            background-color: black; /* 黑色棋子 */
+        }
+        .white-piece {
+            background-color: white; /* 白色棋子 */
+            border: 1px solid black;
+        }
+        @keyframes move {
+            from {
+                transform: translate(0, 0);
+            }
+            to {
+                transform: translate(var(--move-x), var(--move-y)); /* 移动动画 */
+            }
+        }
+        .moving {
+            animation: move 0.5s ease-in-out; /* 移动动画效果 */
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .modal.show {
+            display: block; /* 显示模态框 */
+        }
+    </style>
+</head>
+<body>
+    <div id="game-board"></div> <!-- 棋盘 -->
+    <div id="modal" class="modal"></div> <!-- 模态框 -->
+    <script>
+        const gameBoard = document.getElementById("game-board");
+        const modal = document.getElementById("modal");
+        const board = Array.from({ length: 6 }, () => Array(6).fill(null)); /* 初始化6x6棋盘 */
+        let selectedPiece = null;
+        let currentPlayer = "black"; /* 当前玩家 */
+        let gameEnded = false; /* 游戏结束标志 */
+
+        function createBoard() {
+            gameBoard.innerHTML = "";
+            for (let row = 0; row < 6; row++) {
+                for (let col = 0; col < 6; col++) {
+                    const cell = document.createElement("div");
+                    cell.classList.add("cell");
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+
+                    if (board[row][col]) {
+                        const piece = document.createElement("div");
+                        piece.classList.add("piece", `${board[row][col]}-piece`);
+                        cell.appendChild(piece);
+                    }
+                    
+                    cell.addEventListener("click", () => handleCellClick(row, col)); /* 单元格点击事件 */
+                    gameBoard.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(row, col) {
+            if (gameEnded) return; /* 如果游戏结束，禁止操作 */
+
+            if (selectedPiece) {
+                if (board[row][col] === null) {
+                    movePiece(selectedPiece.row, selectedPiece.col, row, col); /* 移动棋子 */
+                    selectedPiece = null;
+                } else {
+                    selectedPiece = null;
+                }
+            } else if (board[row][col] === currentPlayer) {
+                selectedPiece = { row, col }; /* 选择棋子 */
+            }
+        }
+
+        function movePiece(fromRow, fromCol, toRow, toCol) {
+            if (Math.abs(fromRow - toRow) + Math.abs(fromCol - toCol) === 1 && !board[toRow][toCol]) {
+                const piece = document.querySelector(`[data-row="${fromRow}"][data-col="${fromCol}"] .piece`);
+                const deltaX = (toCol - fromCol) * 85; // 80px 单元格 + 5px 间隙
+                const deltaY = (toRow - fromRow) * 85;
+
+                piece.style.setProperty('--move-x', `${deltaX}px`);
+                piece.style.setProperty('--move-y', `${deltaY}px`);
+                piece.classList.add('moving');
+
+                piece.addEventListener('animationend', () => {
+                    board[toRow][toCol] = board[fromRow][fromCol];
+                    board[fromRow][fromCol] = null;
+                    piece.classList.remove('moving');
+                    piece.style.removeProperty('--move-x');
+                    piece.style.removeProperty('--move-y');
+                    createBoard();
+                    checkCapture(toRow, toCol); /* 检查捕获 */
+                    if (!checkWin()) { /* 检查胜利 */
+                        currentPlayer = currentPlayer === "black" ? "white" : "black"; /* 切换玩家 */
+                        showModal(`现在轮到${currentPlayer}玩家！`);
+                    }
+                }, { once: true });
+            }
+        }
+
+        function checkCapture(row, col) {
+            const directions = [
+                [0, 1], [1, 0], [0, -1], [-1, 0]
+            ];
+
+            let captured = false; // 标记是否捕获棋子
+
+            directions.forEach(([dr, dc]) => {
+                const r1 = row + dr;
+                const c1 = col + dc;
+                const r2 = row + 2 * dr;
+                const c2 = col + 2 * dc;
+
+                if (
+                    isInBounds(r1, c1) && isInBounds(r2, c2) &&
+                    board[r1][c1] === currentPlayer && board[r2][c2] && board[r2][c2] !== currentPlayer
+                ) {
+                    board[r2][c2] = null;
+                    captured = true; // 捕获棋子
+                }
+            });
+
+            if (captured) {
+                createBoard();
+                showModal(`${currentPlayer}捕获了一个棋子！`);
+            }
+        }
+
+        function isInBounds(row, col) {
+            return row >= 0 && row < 6 && col >= 0 && col < 6; /* 检查是否在棋盘范围内 */
+        }
+
+        function checkWin() {
+            const blackCount = board.flat().filter(piece => piece === "black").length;
+            const whiteCount = board.flat().filter(piece => piece === "white").length;
+
+            if (blackCount === 0) {
+                showModal("白方获胜！");
+                gameEnded = true; /* 设置游戏结束标志 */
+                return true;
+            } else if (whiteCount === 0) {
+                showModal("黑方获胜！");
+                gameEnded = true; /* 设置游戏结束标志 */
+                return true;
+            } else if (blackCount === 1 && whiteCount === 1) {
+                showModal("平局！");
+                gameEnded = true; /* 设置游戏结束标志 */
+                return true;
+            }
+            return false;
+        }
+
+        function showModal(message) {
+            modal.textContent = message;
+            modal.classList.add('show');
+            setTimeout(() => {
+                modal.classList.remove('show');
+            }, 2000);
+        }
+
+        function initializeGame() {
+            for (let col = 0; col < 6; col++) {
+                board[5][col] = "black";
+                board[0][col] = "white";
+            }
+            createBoard();
+        }
+
+        initializeGame(); /* 初始化游戏 */
+    </script>
+</body>
+</html>

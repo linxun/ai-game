@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>八角棋游戏</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: #333;
+            color: #fff;
+            padding: 10px;
+            font-size: 22px;
+        }
+
+        #game-wrapper {
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            margin: 20px auto;
+        }
+
+        #left-panel,
+        #right-panel {
+            width: 200px;
+            margin: 10px;
+            text-align: left;
+        }
+
+        #left-panel {
+            order: -1;
+        }
+
+        #game-container {
+            position: relative;
+            width: 600px;
+            height: 600px;
+            margin: auto;
+            background: url('data:image/svg+xml,%3Csvg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cpolygon fill="%23eee" points="100,0 120,30 160,40 130,70 140,110 100,90 60,110 70,70 40,40 80,30"/%3E%3C/svg%3E') repeat;
+            background-size: contain;
+            border: 2px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .slot {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, #fff 40%, #ccc 100%);
+            border: 2px solid #555;
+            border-radius: 50%;
+            cursor: pointer;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: box-shadow 0.2s;
+        }
+
+        .slot:hover {
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .slot.highlight {
+            box-shadow: 0 0 15px 5px rgba(255, 0, 0, 0.5);
+        }
+
+        .piece-black,
+        .piece-gray {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s;
+        }
+
+        .piece-black {
+            background: linear-gradient(135deg, #000 0%, #444 100%);
+        }
+
+        .piece-gray {
+            background: linear-gradient(135deg, #888 0%, #bbb 100%);
+        }
+
+        .slot:hover .piece-black,
+        .slot:hover .piece-gray {
+            transform: scale(1.1);
+        }
+
+        .control-buttons {
+            margin: 10px 0;
+        }
+
+        button {
+            margin-right: 10px;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+
+        #current-player {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        #message {
+            margin-top: 10px;
+            font-size: 16px;
+            color: red;
+            text-align: center;
+        }
+
+        .rules {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .highlight-move {
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.7);
+        }
+
+        /* 简易提示高亮可移动位置 */
+        .highlight-target {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0% {
+                box-shadow: 0 0 10px 2px rgba(0, 255, 0, 0.5);
+            }
+
+            50% {
+                box-shadow: 0 0 10px 2px rgba(0, 255, 0, 0.0);
+            }
+
+            100% {
+                box-shadow: 0 0 10px 2px rgba(0, 255, 0, 0.5);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>八角棋游戏</header>
+    <div id="game-wrapper">
+        <div id="left-panel">
+            <h3>游戏说明</h3>
+            <div class="rules">
+                1. 双方各有4枚棋子，初始时分布在八角星的8个顶点。<br>
+                2. 棋子可以移动到相邻空位，或在特定条件下进入/离开中心圆圈。<br>
+                3. 无法移动的玩家即为失败方。<br>
+            </div>
+            <div class="control-buttons">
+                <button id="restart-btn">重新开始</button>
+                <button id="undo-btn">悔棋</button>
+            </div>
+        </div>
+        <div id="game-container"></div>
+        <div id="right-panel">
+            <div id="current-player"></div>
+            <div id="message"></div>
+            <div class="rules">
+                点击你的棋子，然后点击高亮的空位即可移动。<br>
+                当对手的棋子都无法移动时，你获胜。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =============== 数据与逻辑模块 =============== //
+
+        class Board {
+            constructor() {
+                // 初始棋盘状态
+                this.board = [
+                    'B', // 0号位 右侧 - 下方
+                    'G', // 1号位 右上 - 上方
+                    'G', // 2号位 正上 - 上方
+                    'G', // 3号位 左上 - 上方
+                    'G', // 4号位 正左 - 上方
+                    'B', // 5号位 左下 - 下方
+                    'B', // 6号位 正下 - 下方
+                    'B', // 7号位 右下 - 下方
+                    ''   // 8号位 中心点
+                ];
+                // 位置坐标与邻居关系
+                this.centerX = 300;
+                this.centerY = 300;
+                this.R = 220;
+                this.angleStep = 360 / 8;
+                this.slots = [];
+                for (let i = 0; i < 8; i++) {
+                    let angle = (this.angleStep * i) * Math.PI / 180;
+                    let x = this.centerX + this.R * Math.cos(angle);
+                    let y = this.centerY + this.R * Math.sin(angle);
+                    this.slots.push({ x, y });
+                }
+                // 中心点
+                this.slots.push({ x: this.centerX, y: this.centerY });
+
+                this.neighbors = {
+                    0: [1, 7],
+                    1: [0, 2],
+                    2: [1, 3],
+                    3: [2, 4],
+                    4: [3, 5],
+                    5: [4, 6],
+                    6: [5, 7],
+                    7: [6, 0],
+                    8: [] // 中心特殊处理
+                };
+            }
+
+            resetBoard() {
+                this.board = ['B', 'G', 'B', 'G', 'B', 'G', 'B', 'G', ''];
+            }
+
+            getPiece(pos) {
+                return this.board[pos];
+            }
+
+            setPiece(pos, piece) {
+                this.board[pos] = piece;
+            }
+
+            canMove(start, end, player) {
+                if (this.board[end] !== '') return false;
+                if (this.board[start] !== player) return false;
+
+                if (start === 8) {
+                    // 从中心出发，可跳到任意空的外围点
+                    return true;
+                } else if (end === 8) {
+                    // 进入中心的条件：相邻点无空位且中心空
+                    if (this.board[8] !== '') return false;
+                    let adj = this.neighbors[start];
+                    for (let a of adj) {
+                        if (this.board[a] === '') return false;
+                    }
+                    return true;
+                } else {
+                    // 普通走子：end是相邻点
+                    let adj = this.neighbors[start];
+                    if (adj.includes(end)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            getPossibleMoves(start, player) {
+                // 返回所有可移动的目标位，用于高亮提示
+                let moves = [];
+                for (let end = 0; end < this.board.length; end++) {
+                    if (this.canMove(start, end, player)) {
+                        moves.push(end);
+                    }
+                }
+                return moves;
+            }
+
+            movePiece(start, end) {
+                this.board[end] = this.board[start];
+                this.board[start] = '';
+            }
+
+            noMovesAvailable(player) {
+                for (let i = 0; i < this.board.length; i++) {
+                    if (this.board[i] === player) {
+                        // 检查所有可能的移动位置
+                        for (let j = 0; j < this.board.length; j++) {
+                            if (this.canMove(i, j, player)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+
+        class Game {
+            constructor(board, ui) {
+                this.board = board;
+                this.ui = ui;
+                this.currentPlayer = 'B';
+                this.selectedIndex = null;
+                this.moveHistory = [];
+            }
+
+            start() {
+                this.ui.renderBoard(this.board);
+                this.updateStatus();
+            }
+
+            reset() {
+                this.board.resetBoard();
+                this.currentPlayer = 'B';
+                this.selectedIndex = null;
+                this.moveHistory = [];
+                this.ui.renderBoard(this.board);
+                this.updateStatus();
+                this.ui.clearMessage();
+            }
+
+            undo() {
+                if (this.moveHistory.length > 0) {
+                    let lastMove = this.moveHistory.pop();
+                    this.board.setPiece(lastMove.start, lastMove.player);
+                    this.board.setPiece(lastMove.end, '');
+                    this.currentPlayer = lastMove.player; // 悔棋后回到前一手的玩家继续
+                    this.ui.renderBoard(this.board);
+                    this.updateStatus();
+                }
+            }
+
+            selectPiece(pos) {
+                if (this.board.getPiece(pos) === this.currentPlayer) {
+                    // 若已选中，再次选中则取消
+                    if (this.selectedIndex === pos) {
+                        this.selectedIndex = null;
+                        this.ui.highlightSlot(pos, false);
+                        this.ui.clearHighlightTargets();
+                    } else {
+                        if (this.selectedIndex !== null) {
+                            this.ui.highlightSlot(this.selectedIndex, false);
+                            this.ui.clearHighlightTargets();
+                        }
+                        this.selectedIndex = pos;
+                        this.ui.highlightSlot(pos, true);
+                        // 高亮可移动目标
+                        let moves = this.board.getPossibleMoves(pos, this.currentPlayer);
+                        this.ui.highlightTargets(moves);
+                    }
+                }
+            }
+
+            tryMove(end) {
+                if (this.selectedIndex !== null && this.board.canMove(this.selectedIndex, end, this.currentPlayer)) {
+                    // 记录历史
+                    this.moveHistory.push({ start: this.selectedIndex, end: end, player: this.currentPlayer });
+                    this.board.movePiece(this.selectedIndex, end);
+                    this.ui.renderBoard(this.board);
+                    this.selectedIndex = null;
+                    this.ui.clearHighlightTargets();
+                    this.nextTurn();
+                } else {
+                    // 不可走则取消选中
+                    if (this.selectedIndex !== null) {
+                        this.ui.highlightSlot(this.selectedIndex, false);
+                        this.ui.clearHighlightTargets();
+                        this.selectedIndex = null;
+                    }
+                }
+            }
+
+            nextTurn() {
+                // 检查对手是否无路可走
+                let nextPlayer = (this.currentPlayer === 'B') ? 'G' : 'B';
+                if (this.board.noMovesAvailable(nextPlayer)) {
+                    this.ui.showMessage(this.currentPlayer + '方获胜！');
+                    this.ui.disableInteraction();
+                    return;
+                }
+                this.currentPlayer = nextPlayer;
+                this.updateStatus();
+                this.syncWithServer(); // 假设与服务器同步
+            }
+
+            updateStatus() {
+                let text = (this.currentPlayer === 'B') ? '黑棋回合' : '灰棋回合';
+                this.ui.updateCurrentPlayer(text);
+            }
+
+            syncWithServer() {
+                // 在实际应用中这里可以发送Ajax请求或WebSocket消息同步游戏状态
+                // 本例中仅作演示，不做实际网络传输
+            }
+        }
+
+        // =============== UI模块 =============== //
+        class UI {
+            constructor(gameContainer) {
+                this.gameContainer = gameContainer;
+            }
+
+            init(board, game) {
+                this.board = board;
+                this.game = game;
+                this.gameContainer.innerHTML = '';
+                for (let i = 0; i < board.slots.length; i++) {
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+                    slot.style.left = (board.slots[i].x - 25) + 'px';
+                    slot.style.top = (board.slots[i].y - 25) + 'px';
+                    slot.setAttribute('data-index', i);
+                    slot.addEventListener('click', (e) => this.onSlotClick(i));
+                    slot.addEventListener('mouseover', (e) => this.onSlotHover(i));
+                    slot.addEventListener('mouseout', (e) => this.clearHoverHighlight());
+                    this.gameContainer.appendChild(slot);
+                }
+                // 渲染初始状态
+                this.renderBoard(board);
+            }
+
+            renderBoard(board) {
+                for (let i = 0; i < board.board.length; i++) {
+                    this.renderSlot(i, board.getPiece(i));
+                }
+            }
+
+            renderSlot(index, piece) {
+                const slotEl = this.gameContainer.querySelector('.slot[data-index="' + index + '"]');
+                slotEl.innerHTML = '';
+                slotEl.classList.remove('highlight', 'highlight-target', 'highlight-move');
+                if (piece === 'B') {
+                    let pieceEl = document.createElement('div');
+                    pieceEl.className = 'piece-black';
+                    slotEl.appendChild(pieceEl);
+                } else if (piece === 'G') {
+                    let pieceEl = document.createElement('div');
+                    pieceEl.className = 'piece-gray';
+                    slotEl.appendChild(pieceEl);
+                }
+            }
+
+            highlightSlot(index, highlight) {
+                const slotEl = this.gameContainer.querySelector('.slot[data-index="' + index + '"]');
+                if (!slotEl) return;
+                if (highlight) {
+                    slotEl.classList.add('highlight');
+                } else {
+                    slotEl.classList.remove('highlight');
+                }
+            }
+
+            highlightTargets(indexes) {
+                this.clearHighlightTargets();
+                for (let idx of indexes) {
+                    const slotEl = this.gameContainer.querySelector('.slot[data-index="' + idx + '"]');
+                    if (slotEl) {
+                        slotEl.classList.add('highlight-target');
+                    }
+                }
+            }
+
+            clearHighlightTargets() {
+                const targets = this.gameContainer.querySelectorAll('.highlight-target');
+                targets.forEach(t => t.classList.remove('highlight-target'));
+            }
+
+            onSlotClick(index) {
+                const piece = this.board.getPiece(index);
+                const { selectedIndex, currentPlayer } = this.game;
+
+                if (selectedIndex === null) {
+                    // 尝试选中棋子
+                    this.game.selectPiece(index);
+                } else {
+                    // 已有选择，尝试走子
+                    this.game.tryMove(index);
+                }
+            }
+
+            onSlotHover(index) {
+                // 若已选中一个棋子，则高亮鼠标悬停处是否可到达
+                if (this.game.selectedIndex !== null) {
+                    if (this.board.canMove(this.game.selectedIndex, index, this.game.currentPlayer)) {
+                        const slotEl = this.gameContainer.querySelector('.slot[data-index="' + index + '"]');
+                        slotEl.classList.add('highlight-move');
+                    }
+                }
+            }
+
+            clearHoverHighlight() {
+                const moves = this.gameContainer.querySelectorAll('.highlight-move');
+                moves.forEach(m => m.classList.remove('highlight-move'));
+            }
+
+            updateCurrentPlayer(text) {
+                document.getElementById('current-player').innerText = text;
+            }
+
+            showMessage(msg) {
+                document.getElementById('message').innerText = msg;
+            }
+
+            clearMessage() {
+                document.getElementById('message').innerText = '';
+            }
+
+            disableInteraction() {
+                this.gameContainer.style.pointerEvents = 'none';
+            }
+
+            enableInteraction() {
+                this.gameContainer.style.pointerEvents = 'auto';
+            }
+        }
+
+        // =============== 初始化与事件绑定 =============== //
+        const board = new Board();
+        const ui = new UI(document.getElementById('game-container'));
+        const game = new Game(board, ui);
+        ui.init(board, game);
+        game.start();
+
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            ui.enableInteraction();
+            game.reset();
+        });
+
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            game.undo();
+        });
+    </script>
+</body>
+
+</html>
