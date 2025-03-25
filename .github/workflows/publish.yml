@@ -13,10 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Build site
-      run: |
-        mkdir -p .site
-        cp .site/index.html /site/index.html
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
