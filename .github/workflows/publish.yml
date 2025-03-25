@@ -16,7 +16,7 @@ jobs:
     - name: Build site
       run: |
         mkdir -p _site
-        cp site/index.html _site/index.html
+        cp _site/index.html _site/index.html
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
