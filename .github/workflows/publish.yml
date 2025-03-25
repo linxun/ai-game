@@ -13,10 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Build site
+      run: |
+        mkdir -p _site
+        cp site/index.html _site/index.html
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: _site/index.html
+        path: _site
   deploy:
     environment:
       name: github-pages
